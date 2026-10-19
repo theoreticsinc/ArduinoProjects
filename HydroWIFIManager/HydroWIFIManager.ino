@@ -492,16 +492,17 @@ void setup() {
     RELAY_PIN = D5;
     systemName = "Hydroponics";
     uniqueHostname = "hydro-pump-" + chipId;
-    uniqueAPName = "Hydro-Setup-" + chipId;
+    uniqueAPName = "Hydro" + chipId;
     local_IP = IPAddress(192, 168, 1, 120);  // IP .120 for Hydroponics
   } else {
     RELAY_PIN = D2;
     systemName = "Aeroponics";
     uniqueHostname = "aero-pump-" + chipId;
-    uniqueAPName = "Aero-Setup-" + chipId;
+    uniqueAPName = "Aero" + chipId;
     local_IP = IPAddress(192, 168, 1, 110);  // IP .110 for Aeroponics
   }
 
+  uniqueAPName.toUpperCase();
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, PUMP_ON);
   previousMillis = millis();
@@ -517,7 +518,8 @@ void setup() {
   //FOR Debug Only
   //wifiManager.resetSettings();
 
-  WiFi.mode(WIFI_STA);
+  // Updated to AP+STA mode so it can host setup portal and connect simultaneously
+  WiFi.mode(WIFI_AP_STA);
   wifiManager.setSTAStaticIPConfig(local_IP, gateway, subnet, primaryDNS);
 
   if (!wifiManager.autoConnect(uniqueAPName.c_str())) {

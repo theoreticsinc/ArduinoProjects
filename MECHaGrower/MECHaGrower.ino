@@ -8,15 +8,15 @@
 #include <EEPROM.h>
 #include <time.h>
 
-// --- WiFi Credentials ---
+// --- WiFi Credentials (Home Router) ---
 const char* ssid = "PLDTHOMEFIBR2XamC_2.4G";
 const char* password = "PLDTWIFI6UnMM";
 
-// --- Direct Access Point (AP) Settings (When away from router) ---
-const char* ap_ssid = "MECHaGrower_Direct";
+// --- Direct Access Point (AP) Settings ---
+const char* ap_ssid = "MECHaGrower";
 const char* ap_password = "";
 
-// --- Static IP Settings ---
+// --- Static IP Settings (Home Network) ---
 IPAddress local_IP(192, 168, 1, 115);
 IPAddress gateway(192, 168, 1, 1);     
 IPAddress subnet(255, 255, 255, 0);
@@ -28,24 +28,24 @@ const int daylightOffset_sec = 0;
 const char* ntpServer = "pool.ntp.org";
 
 // --- Pin Definitions ---
-const int lightRelayPin = D1; // Grow Lights Relay (Connected to NO)
+const int lightRelayPin = D1; // Grow Lights Relay
 const int fanRelayPin =   D5; // 12V Fan Relay
 
 // --- Settings Structure (Saved in EEPROM) ---
 struct Settings {
-  int lightStartHour = 18;      // Light active window start hour (6 PM)
-  int lightEndHour = 2;         // Light active window end hour (2 AM)
-  int lightOnMinutes = 45;      // Light ON duration in minutes
-  int lightOffMinutes = 15;     // Light OFF rest duration in minutes
+  int lightStartHour = 18;      
+  int lightEndHour = 2;         
+  int lightOnMinutes = 45;      
+  int lightOffMinutes = 15;     
   
-  int fanOnSeconds = 30;        // Fan ON duration in seconds
-  int fanOffMinutes = 30;       // Fan OFF duration in minutes
-  int fanStartHour = 6;         // Fan active window start hour (6 AM)
-  int fanEndHour = 22;          // Fan active window end hour (10 PM)
+  int fanOnSeconds = 30;        
+  int fanOffMinutes = 30;       
+  int fanStartHour = 6;         
+  int fanEndHour = 22;          
   
-  char owmApiKey[33] = "2d25cc59c11a81fdfee74fcb94daf43c";      // OpenWeatherMap API Key
-  char owmCity[32] = "Paranaque";  // City name for OpenWeatherMap
-  float windThreshold = 5.0;    // Wind threshold in m/s to override fan OFF
+  char owmApiKey[33] = "2d25cc59c11a81fdfee74fcb94daf43c";      
+  char owmCity[32] = "Paranaque";  
+  float windThreshold = 5.0;    
 };
 Settings config;
 
@@ -324,8 +324,8 @@ void setup() {
   pinMode(fanRelayPin, OUTPUT);
   
   // Safe initial boot state (Relays OFF)
-  digitalWrite(lightRelayPin, HIGH);
-  digitalWrite(fanRelayPin, HIGH);
+  digitalWrite(lightRelayPin, LOW);
+  digitalWrite(fanRelayPin, LOW);
 
   loadConfig();
 
@@ -341,20 +341,21 @@ void setup() {
   if (!WiFi.config(local_IP, gateway, subnet, primaryDNS)) {
     Serial.println("STA Failed to configure Static IP");
   }
-// 1. Configure Custom AP IP Address (e.g., 192.168.10.1)
+
+  // 2. Configure Custom AP IP Address (192.168.10.1)
   IPAddress customAPIP(192, 168, 10, 1);
   IPAddress customGateway(192, 168, 10, 1);
   IPAddress customSubnet(255, 255, 255, 0);
   WiFi.softAPConfig(customAPIP, customGateway, customSubnet);
   
-  // 2. Start Access Point (AP) Network so you can connect directly
+  // 3. Start Access Point (AP) Network
   WiFi.softAP(ap_ssid, ap_password);
   Serial.print("Access Point Started! Connect to Wi-Fi: ");
   Serial.println(ap_ssid);
   Serial.print("AP IP Address: ");
-  Serial.println(WiFi.softAPIP()); // Usually defaults to 192.168.4.1
+  Serial.println(WiFi.softAPIP()); // Output: 192.168.10.1
 
-  // 3. Connect to Home Router
+  // 4. Connect to Home Router
   WiFi.begin(ssid, password);
   Serial.print("Connecting to Home Wi-Fi");
   int wifiAttempts = 0;
@@ -411,103 +412,130 @@ void loop() {
   timeinfo = localtime(&now);
   bool timeSynced = (timeinfo->tm_year > (2020 - 1900));
 
-  // --- 1. GROW LIGHT LOGIC & COUNTDOWN CALCULATION ---
+  // --- 1. GROW LIGHT LOGIC (Strict Manual Override First) ---
   bool lightShouldBeOn = false;
   
   if (lightManualMode == 1) {
     lightShouldBeOn = true;  // Forced ON
     secondsUntilLightToggle = 0;
-    lightPreviousMillis = currentMillis;
   } else if (lightManualMode == 2) {
     lightShouldBeOn = false; // Forced OFF
     secondsUntilLightToggle = 0;
-    lightPreviousMillis = currentMillis;
-  } else if (timeSynced) {
-    int currentHour = timeinfo->tm_hour;
-    
-    bool withinLightTimeRange = false;
-    if (config.lightStartHour <= config.lightEndHour) {
-      withinLightTimeRange = (currentHour >= config.lightStartHour && currentHour < config.lightEndHour);
-    } else {
-      withinLightTimeRange = (currentHour >= config.lightStartHour || currentHour < config.lightEndHour);
-    }
-
-    if (withinLightTimeRange) {
-      // Fixed: Added missing '*' multiplication signs
-      unsigned long lightOnDurationMillis = (unsigned long)config.lightOnMinutes * 60UL * 1000UL;
-      unsigned long lightOffDurationMillis = (unsigned long)config.lightOffMinutes * 60UL * 1000UL;
-      unsigned long currentLightInterval = lightStateActive ? lightOnDurationMillis : lightOffDurationMillis;
-
-      if (currentMillis - lightPreviousMillis >= currentLightInterval) {
-        lightPreviousMillis = currentMillis;
-        lightStateActive = !lightStateActive;
-        currentLightInterval = lightStateActive ? lightOnDurationMillis : lightOffDurationMillis;
+  } else {
+    // AUTO MODE: Schedule
+    if (timeSynced) {
+      int currentHour = timeinfo->tm_hour;
+      
+      bool withinLightTimeRange = false;
+      if (config.lightStartHour <= config.lightEndHour) {
+        withinLightTimeRange = (currentHour >= config.lightStartHour && currentHour < config.lightEndHour);
+      } else {
+        withinLightTimeRange = (currentHour >= config.lightStartHour || currentHour < config.lightEndHour);
       }
 
-      unsigned long elapsedInLightPhase = currentMillis - lightPreviousMillis;
-      unsigned long remainingInLightPhase = (currentLightInterval > elapsedInLightPhase) ? (currentLightInterval - elapsedInLightPhase) : 0;
-      
-      secondsUntilLightToggle = remainingInLightPhase / 1000UL;
-      lightShouldBeOn = lightStateActive;
+      if (withinLightTimeRange) {
+        unsigned long lightOnDurationMillis = (unsigned long)config.lightOnMinutes * 60UL * 1000UL;
+        unsigned long lightOffDurationMillis = (unsigned long)config.lightOffMinutes * 60UL * 1000UL;
+        unsigned long currentLightInterval = lightStateActive ? lightOnDurationMillis : lightOffDurationMillis;
+
+        if (lightPreviousMillis == 0) {
+          lightPreviousMillis = currentMillis;
+          lightStateActive = true;
+        }
+
+        if (currentMillis - lightPreviousMillis >= currentLightInterval) {
+          lightPreviousMillis = currentMillis;
+          lightStateActive = !lightStateActive;
+          currentLightInterval = lightStateActive ? lightOnDurationMillis : lightOffDurationMillis;
+        }
+
+        unsigned long elapsedInLightPhase = currentMillis - lightPreviousMillis;
+        unsigned long remainingInLightPhase = (currentLightInterval > elapsedInLightPhase) ? (currentLightInterval - elapsedInLightPhase) : 0;
+        
+        secondsUntilLightToggle = remainingInLightPhase / 1000UL;
+        lightShouldBeOn = lightStateActive;
+      } else {
+        lightStateActive = false;
+        lightShouldBeOn = false; 
+        secondsUntilLightToggle = 0;
+        lightPreviousMillis = 0;
+      }
     } else {
-      lightStateActive = false;
-      lightShouldBeOn = false; 
+      lightShouldBeOn = false;
       secondsUntilLightToggle = 0;
-      lightPreviousMillis = currentMillis;
     }
   }
   
-  // Active-HIGH relay logic for your board: HIGH = ON, LOW = OFF
-  digitalWrite(lightRelayPin, lightShouldBeOn ? HIGH : LOW);
+  // Explicit Light Relay Output (Change HIGH/LOW inside if/else if needed)
+  if (lightShouldBeOn) {
+    digitalWrite(lightRelayPin, HIGH); 
+  } else {
+    digitalWrite(lightRelayPin, LOW);  
+  }
 
-  // --- 2. FAN LOGIC & COUNTDOWN CALCULATION ---
+  // --- 2. FAN LOGIC (Strict Manual Override First) ---
   bool fanShouldBeOn = false;
+  
   if (fanManualMode == 1) {
     fanShouldBeOn = true;  // Forced ON
     secondsUntilFanOn = 0;
-    fanPreviousMillis = currentMillis;
   } else if (fanManualMode == 2 || isWindyOverride) {
     fanShouldBeOn = false; // Forced OFF (Manual or Windy Weather Override)
     secondsUntilFanOn = 0; 
-    fanPreviousMillis = currentMillis; 
-  } else if (timeSynced) {
-    int currentHour = timeinfo->tm_hour;
-    
-    bool withinTimeRange = false;
-    if (config.fanStartHour <= config.fanEndHour) {
-      withinTimeRange = (currentHour >= config.fanStartHour && currentHour < config.fanEndHour);
-    } else {
-      withinTimeRange = (currentHour >= config.fanStartHour || currentHour < config.fanEndHour);
-    }
-
-    if (withinTimeRange) {
-      // Fixed: Added missing '*' multiplication signs
-      unsigned long fanOnDurationMillis = (unsigned long)config.fanOnSeconds * 1000UL;
-      unsigned long fanOffDurationMillis = (unsigned long)config.fanOffMinutes * 60UL * 1000UL;
-      unsigned long currentInterval = fanStateActive ? fanOnDurationMillis : fanOffDurationMillis;
-
-      if (currentMillis - fanPreviousMillis >= currentInterval) {
-        fanPreviousMillis = currentMillis;
-        fanStateActive = !fanStateActive;
-        currentInterval = fanStateActive ? fanOnDurationMillis : fanOffDurationMillis;
-      }
-
-      unsigned long elapsedInPhase = currentMillis - fanPreviousMillis;
-      unsigned long remainingInPhase = (currentInterval > elapsedInPhase) ? (currentInterval - elapsedInPhase) : 0;
-
-      if (fanStateActive) {
-        secondsUntilFanOn = (remainingInPhase + fanOffDurationMillis) / 1000UL;
+  } else {
+    // AUTO MODE: Schedule
+    if (timeSynced) {
+      int currentHour = timeinfo->tm_hour;
+      
+      bool withinTimeRange = false;
+      if (config.fanStartHour <= config.fanEndHour) {
+        withinTimeRange = (currentHour >= config.fanStartHour && currentHour < config.fanEndHour);
       } else {
-        secondsUntilFanOn = remainingInPhase / 1000UL;
+        withinTimeRange = (currentHour >= config.fanStartHour || currentHour < config.fanEndHour);
       }
 
-      fanShouldBeOn = fanStateActive;
+      if (withinTimeRange) {
+        unsigned long fanOnDurationMillis = (unsigned long)config.fanOnSeconds * 1000UL;
+        unsigned long fanOffDurationMillis = (unsigned long)config.fanOffMinutes * 60UL * 1000UL;
+        unsigned long currentInterval = fanStateActive ? fanOnDurationMillis : fanOffDurationMillis;
+
+        if (fanPreviousMillis == 0) {
+          fanPreviousMillis = currentMillis;
+          fanStateActive = true;
+        }
+
+        if (currentMillis - fanPreviousMillis >= currentInterval) {
+          fanPreviousMillis = currentMillis;
+          fanStateActive = !fanStateActive;
+          currentInterval = fanStateActive ? fanOnDurationMillis : fanOffDurationMillis;
+        }
+
+        unsigned long elapsedInPhase = currentMillis - fanPreviousMillis;
+        unsigned long remainingInPhase = (currentInterval > elapsedInPhase) ? (currentInterval - elapsedInPhase) : 0;
+
+        if (fanStateActive) {
+          secondsUntilFanOn = (remainingInPhase + fanOffDurationMillis) / 1000UL;
+        } else {
+          secondsUntilFanOn = remainingInPhase / 1000UL;
+        }
+
+        fanShouldBeOn = fanStateActive;
+      } else {
+        fanStateActive = false;
+        fanShouldBeOn = false; 
+        secondsUntilFanOn = 0; 
+        fanPreviousMillis = 0; 
+      }
     } else {
-      fanStateActive = false;
-      fanShouldBeOn = false; 
-      secondsUntilFanOn = 0; 
-      fanPreviousMillis = currentMillis; 
+      fanShouldBeOn = false;
+      secondsUntilFanOn = 0;
     }
   }
-  digitalWrite(fanRelayPin, fanShouldBeOn ? LOW : HIGH);
+
+  // Explicit Fan Relay Output (Change HIGH/LOW inside if/else if needed)
+  if (fanShouldBeOn) {
+    digitalWrite(fanRelayPin, HIGH); 
+  } else {
+    digitalWrite(fanRelayPin, LOW);  
+  }
 }
