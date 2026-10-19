@@ -535,6 +535,14 @@ void setup() {
     ESP.restart();
   }
 
+  // --- FORCE AP TO STAY OPEN ALONGSIDE STATION MODE ---
+  // WiFiManager shuts down the AP by default on success. 
+  // This explicitly restarts the AP interface so 192.168.4.1 remains active!
+  WiFi.softAP(uniqueAPName.c_str()); 
+  Serial.print("Access Point Started. AP IP: ");
+  Serial.println(WiFi.softAPIP()); // Will print 192.168.4.1
+  // ---------------------------------------------------
+
   WiFi.hostname(uniqueHostname);
 
   // 3. NTP & ArduinoOTA Setup
