@@ -212,7 +212,7 @@ void handleRoot() {
   html += ".timer-display{font-size:38px;font-weight:700;color:var(--primary);text-align:center;margin:15px 0;letter-spacing:1px;}";
   html += ".btn-group{display:flex;gap:10px;justify-content:center;margin-top:15px;}";
   html += ".btn{flex:1;padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:0.2s;text-align:center;text-decoration:none;display:inline-block;}";
-  html += ".btn-on{background:#22c55e;color:white;} .btn-off{background:#ef4444;color:white;} .btn-warn{background:#f59e0b;color:white;} .btn-neutral{background:#64748b;color:white;}";
+  html += ".btn-on{background:#22c55e;color:white;} .btn-off{background:#ef4444;color:white;} .btn-warn{background:#f59e0b;color:white;} .btn-neutral{background:#64748b;color:white;} .btn-danger{background:#b91c1c;color:white;}";
   html += ".shift-row{background:#f1f5f9;padding:12px;border-radius:10px;margin-bottom:10px;text-align:left;}";
   html += ".shift-row label{font-weight:600;display:block;margin-bottom:5px;color:#334155;}";
   html += "input[type=number]{width:60px;padding:6px;border:1px solid #cbd5e1;border-radius:6px;text-align:center;}";
@@ -268,6 +268,11 @@ void handleRoot() {
   html += "<a href='/toggleOverride?enable=1' class='btn btn-warn'>Enable Override</a>";
   html += "<a href='/toggleOverride?enable=0' class='btn btn-neutral'>Disable Override</a>";
   html += "</div></div>";
+
+  // WiFi Reset Button Icon / Action
+  html += "<div style='margin-top:18px; padding-top:12px; border-top:1px solid #e2e8f0; text-align:center;'>";
+  html += "<a href='/resetWiFi' class='btn btn-danger' onclick='return confirm(\"Are you sure you want to reset Wi-Fi settings and restart AP portal?\");'>⚙️ Reset Wi-Fi Settings</a>";
+  html += "</div>";
 
   html += "</div>";
 
@@ -410,23 +415,33 @@ void handleSetTimer() {
   server.send(303);
 }
 
+// Handler to reset WiFi settings via web dashboard
+void handleResetWiFi() {
+  server.send(200, "text/html", "<html><body style='font-family:sans-serif; text-align:center; padding-top:50px;'><h2>Wi-Fi Settings Reset!</h2><p>The ESP8266 is restarting into setup mode...</p><p>Connect to the setup AP network to reconfigure Wi-Fi.</p></body></html>");
+  delay(2000);
+  WiFiManager wm;
+  wm.resetSettings();
+  ESP.restart();
+}
+
 void fetchTemperature() {
   if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient client;
+    WiFiClientSecure client; // Use WiFiClientSecure for HTTPS
+    client.setInsecure();    // Set insecure on the client to bypass SSL certificate checks
+    
     HTTPClient http;
 
-    //String url = "http://api.openweathermap.org/data/2.5/weather?q=" + city + "," + country + "&units=metric&appid=" + apiKey;
-
-    //String url = "https://api.openweathermap.org/data/2.5/weather?lat=" + String(lat, 4) + "&lon=" + String(lon, 4) + "&units=metric&lang=en&appid=" + String(apiKey);
-
-    char urlBuffer[256];
+    char urlBuffer[300];
     snprintf(urlBuffer, sizeof(urlBuffer),
              "https://api.openweathermap.org/data/2.5/weather?lat=%.4f&lon=%.4f&units=metric&lang=en&appid=%s",
-             lat, lon, apiKey);
+             lat, lon, apiKey.c_str());
 
     String url = String(urlBuffer);
+    Serial.println("Fetching URL: " + url);
 
     http.begin(client, url);
+    http.setUserAgent("ESP8266-Hydroponics");
+
     int httpCode = http.GET();
 
     if (httpCode == HTTP_CODE_OK) {
@@ -438,18 +453,15 @@ void fetchTemperature() {
       if (!error) {
         currentTempC = doc["main"]["temp"];
         currentClouds = doc["clouds"]["all"];
-        currentHumidity = doc["main"]["humidity"];                                   // Percentage (0 - 100%)
-                                                                                     // Approximate VPD calculation in Celsius
-        float svp = 0.61078 * exp((17.27 * currentTempC) / (currentTempC + 237.3));  // Saturation Vapor Pressure (kPa)
-        float avp = svp * (currentHumidity / 100.0);                                 // Actual Vapor Pressure (kPa)
-        float vpd = svp - avp;                                                       // Vapor Pressure Deficit (kPa)
+        currentHumidity = doc["main"]["humidity"];                                   
+        
+        float svp = 0.61078 * exp((17.27 * currentTempC) / (currentTempC + 237.3));  
+        float avp = svp * (currentHumidity / 100.0);                                 
+        float vpd = svp - avp;                                                       
 
-        Serial.printf("Current Parañaque Temp: %.2f °C | Clouds: %.0f %% | Humiditys: %.0f %%\n", currentTempC, currentClouds, currentHumidity);
+        Serial.printf("Current Parañaque Temp: %.2f °C | Clouds: %.0f %% | Humidity: %.0f %%\n", currentTempC, currentClouds, currentHumidity);
 
-        // Evaluate weather condition if manual force is not active
         if (!manualOverrideForce) {
-          // Trigger override ONLY if temp is AT OR ABOVE tempThreshold AND cloudiness IS BELOW cloudThreshold
-          //if (currentTempC >= tempThreshold && currentClouds < cloudThreshold && currentHumidity < humidityThreshold) {
           if (vpd > 1.5 || (currentTempC >= tempThreshold && currentClouds < cloudThreshold)) {
             if (!overrideActive) cycleStartTime = millis();
             overrideActive = true;
@@ -492,17 +504,16 @@ void setup() {
     RELAY_PIN = D5;
     systemName = "Hydroponics";
     uniqueHostname = "hydro-pump-" + chipId;
-    uniqueAPName = "Hydro" + chipId;
-    local_IP = IPAddress(192, 168, 1, 120);  // IP .120 for Hydroponics
+    uniqueAPName = "HYDRO" + chipId;
+    local_IP = IPAddress(192, 168, 1, 120);  
   } else {
     RELAY_PIN = D2;
     systemName = "Aeroponics";
     uniqueHostname = "aero-pump-" + chipId;
-    uniqueAPName = "Aero" + chipId;
-    local_IP = IPAddress(192, 168, 1, 110);  // IP .110 for Aeroponics
+    uniqueAPName = "AERO" + chipId;
+    local_IP = IPAddress(192, 168, 1, 110);  
   }
 
-  uniqueAPName.toUpperCase();
   pinMode(RELAY_PIN, OUTPUT);
   digitalWrite(RELAY_PIN, PUMP_ON);
   previousMillis = millis();
@@ -515,10 +526,7 @@ void setup() {
   // 2. Configure WiFiManager
   WiFiManager wifiManager;
 
-  //FOR Debug Only
-  //wifiManager.resetSettings();
-
-  // Updated to AP+STA mode so it can host setup portal and connect simultaneously
+  // Mode set to AP+STA so it can host config portal and connect simultaneously
   WiFi.mode(WIFI_AP_STA);
   wifiManager.setSTAStaticIPConfig(local_IP, gateway, subnet, primaryDNS);
 
@@ -545,6 +553,7 @@ void setup() {
   server.on("/toggleOverride", handleToggleOverride);
   server.on("/setThresholds", handleSetThresholds);
   server.on("/setTimer", handleSetTimer);
+  server.on("/resetWiFi", handleResetWiFi);  // Added route for resetting Wi-Fi
   server.begin();
 }
 
@@ -561,10 +570,8 @@ void loop() {
 
   // 2. Main Relay Control Dispatcher
   if (overrideActive && currentState != MANUAL) {
-    // 2m ON / 3m OFF override cycle
     handleCycleTiming();
   } else if (currentState != MANUAL) {
-    // Normal Shift Timing Logic
     unsigned long currentMillis = millis();
 
     switch (currentState) {
