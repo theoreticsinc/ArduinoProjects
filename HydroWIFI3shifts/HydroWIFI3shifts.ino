@@ -1,19 +1,18 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
-#include <time.h>
 
 // --- WiFi Credentials ---
 const char* ssid = "PLDTHOMEFIBR2XamC_2.4G";
 const char* password = "PLDTWIFI6UnMM";
 
 // --- Static IP Configuration ---
-IPAddress local_IP(192, 168, 1, 120);  // Static IP you want to set
+IPAddress local_IP(192, 168, 1, 110);  // Static IP you want to set
 IPAddress gateway(192, 168, 1, 1);     // Your router's IP address (usually 192.168.1.1 or 192.168.1.254)
 IPAddress subnet(255, 255, 255, 0);    // Subnet mask
 IPAddress primaryDNS(8, 8, 8, 8);      // Optional: Google DNS
 
 // --- Pin Setup ---
-const int RELAY_PIN = D5;  // Active LOW Relay: ON = LOW, OFF = HIGH
+const int RELAY_PIN1 = D2;  // Active LOW Relay: ON = LOW, OFF = HIGH
 #define PUMP_ON LOW
 #define PUMP_OFF HIGH
 // --- Time Zone / NTP Settings ---
@@ -33,12 +32,12 @@ struct ShiftConfig {
 
 // Default Shifts: Morning (6 AM), Day (12 PM), Night (6 PM)
 ShiftConfig shift1 = { 6, 1, 2, 15, "Shift 1 (Morning)" };
-ShiftConfig shift2 = {12, 1, 2, 20, "Shift 2 (Day)"     };
+ShiftConfig shift2 = {11, 2, 2, 10, "Shift 2 (Day)"     };
 ShiftConfig shift3 = {18, 1, 2, 30, "Shift 3 (Night)"   };
 
 // Active Cycle Durations (in seconds)
 unsigned long durationON   = 60;
-unsigned long durationOFF  = 120;
+unsigned long durationOFF  = 60;
 unsigned long durationWAIT = 900;
 String activeShiftName = "Shift 1";
 
@@ -108,7 +107,7 @@ void handleRoot() {
     strftime(timeStr, sizeof(timeStr), "%I:%M:%S %p", timeinfo);
   }
 
-  String html = "<!DOCTYPE html><html><head><title>Hydroponics 3-Shift Control</title>";
+  String html = "<!DOCTYPE html><html><head><title>Aeroponics 3-Shift Control</title>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<meta http-equiv='refresh' content='3'>"; 
 
@@ -121,8 +120,8 @@ void handleRoot() {
   html += "input[type=number]{padding:5px;width:50px;margin:2px;}</style></head><body>";
 
   html += "<div class='card'>";
-  html += "<h2>Hydroponics 3-Shift Controller</h2>";
-  html += "<p>Current Time: <b>" + String(timeStr) + "</b></p>";
+  html += "<h2>Aeroponics 3-Shift Controller</h2>";
+  html += "<h3><p>Current Time: <b>" + String(timeStr) + "</b></p><h3>";
   html += "<p>Active Profile: <span class='badge'>" + activeShiftName + "</span></p>";
 
   String stateStr = "MANUAL MODE";
@@ -198,10 +197,10 @@ void handleManual() {
     String state = server.arg("state");
     currentState = MANUAL;
     if (state == "on") {
-      digitalWrite(RELAY_PIN, PUMP_ON);
+      digitalWrite(RELAY_PIN1, PUMP_ON);
       pumpState = true;
     } else {
-      digitalWrite(RELAY_PIN, PUMP_OFF);
+      digitalWrite(RELAY_PIN1, PUMP_OFF);
       pumpState = false;
     }
   }
@@ -233,12 +232,12 @@ void handleSetTimer() {
     if (mode == "Save & Start") {
       updateShiftProfile();
       currentState = STATE_ON;
-      digitalWrite(RELAY_PIN, PUMP_ON);
+      digitalWrite(RELAY_PIN1, PUMP_ON);
       pumpState = true;
       previousMillis = millis();
     } else {
       currentState = MANUAL;
-      digitalWrite(RELAY_PIN, PUMP_OFF);
+      digitalWrite(RELAY_PIN1, PUMP_OFF);
       pumpState = false;
     }
   }
@@ -248,8 +247,8 @@ void handleSetTimer() {
 
 void setup() {
   Serial.begin(115200);
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, PUMP_ON);
+  pinMode(RELAY_PIN1, OUTPUT);
+  digitalWrite(RELAY_PIN1, PUMP_ON);
   previousMillis = millis();
 
   WiFi.mode(WIFI_STA);
@@ -278,7 +277,7 @@ void loop() {
       case STATE_ON:
         if (currentMillis - previousMillis >= (durationON * 1000)) {
           currentState = STATE_OFF;
-          digitalWrite(RELAY_PIN, PUMP_OFF);
+          digitalWrite(RELAY_PIN1, PUMP_OFF);
           pumpState = false;
           previousMillis = currentMillis;
         }
@@ -287,7 +286,7 @@ void loop() {
       case STATE_OFF:
         if (currentMillis - previousMillis >= (durationOFF * 1000)) {
           currentState = STATE_WAIT;
-          digitalWrite(RELAY_PIN, PUMP_OFF);
+          digitalWrite(RELAY_PIN1, PUMP_OFF);
           pumpState = false;
           previousMillis = currentMillis;
         }
@@ -299,7 +298,7 @@ void loop() {
           updateShiftProfile();
           
           currentState = STATE_ON;
-          digitalWrite(RELAY_PIN, PUMP_ON);
+          digitalWrite(RELAY_PIN1, PUMP_ON);
           pumpState = true;
           previousMillis = currentMillis;
         }
